@@ -43,7 +43,7 @@ function isVercelRuntime(): boolean {
 function hasBlobConfiguration(): boolean {
   return (
     Boolean(process.env.BLOB_READ_WRITE_TOKEN) ||
-    (Boolean(process.env.BLOB_STORE_ID) && Boolean(process.env.VERCEL_OIDC_TOKEN))
+    Boolean(process.env.BLOB_STORE_ID)
   );
 }
 
