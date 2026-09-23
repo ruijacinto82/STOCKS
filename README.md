@@ -17,6 +17,8 @@ Tickers Yahoo de exemplo: AAPL, EDP.LS, SAN.MC, SAP.DE, ASML.AS, MC.PA, 7203.T.
 
 Nota: yahoo-finance2 usa uma API não oficial. Serve para uso pessoal e educativo, mas não deve ser tratado como feed garantido de mercado.
 
+Cada perfil suporta até 24 ações, apresentadas numa grelha que se adapta à largura do ecrã e ao zoom do browser. Os períodos disponíveis incluem a última sessão intraday em intervalos de 5 minutos, as últimas cinco sessões em intervalos de 15 minutos, um mês, seis meses e um ano.
+
 ## Deploy no Vercel
 
 Para o deploy no Vercel com persistência dos perfis, a aplicação usa **Vercel Blob** em produção.

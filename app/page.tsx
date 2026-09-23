@@ -3,7 +3,14 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 type Point={date:string;close:number}; type Stock={symbol:string;name:string;currency:string;points:Point[];error?:boolean};
 type Profile={id:string;name:string;symbols:string[];range:string};
-const ranges=['1d','1mo','6mo','1y'];
+const MAX_SYMBOLS=24;
+const ranges=[
+ {value:'1d',label:'Hoje · 5 min'},
+ {value:'5d',label:'5 dias · 15 min'},
+ {value:'1mo',label:'1 mês'},
+ {value:'6mo',label:'6 meses'},
+ {value:'1y',label:'1 ano'},
+];
 async function readJson<T>(response:Response):Promise<T>{
  const data=await response.json();
  if(!response.ok) throw new Error(typeof data?.error==='string'?data.error:'Pedido inválido');
@@ -32,7 +39,7 @@ export default function Home(){
  async function load(){setLoading(true);setError('');try{const r=await fetch(`/api/stocks?symbols=${encodeURIComponent(symbols.join(','))}&range=${range}`);if(!r.ok)throw new Error();setStocks((await r.json()).stocks)}catch{setError('Não foi possível obter as cotações.')}finally{setLoading(false)}}
 
  useEffect(()=>{loadProfiles()},[]);
- useEffect(()=>{if(profilesReady&&symbols.length)load()},[symbols.join(','),range,profilesReady]);
+ useEffect(()=>{if(!profilesReady)return;if(symbols.length)load();else setStocks([])},[symbols.join(','),range,profilesReady]);
 
  // Guarda automaticamente a configuração (símbolos/intervalo) no perfil ativo
  useEffect(()=>{
@@ -48,7 +55,12 @@ export default function Home(){
  },[symbols.join(','),range]);
 
  const visible=useMemo(()=>stocks,[stocks]);
- function add(){const s=input.trim().toUpperCase();if(s&&!symbols.includes(s))setSymbols([...symbols,s]);setInput('')}
+ function add(){
+  const s=input.trim().toUpperCase();
+  if(!s||symbols.includes(s)){setInput('');return}
+  if(symbols.length>=MAX_SYMBOLS){setError(`Cada perfil pode ter no máximo ${MAX_SYMBOLS} ações.`);return}
+  setError('');setSymbols([...symbols,s]);setInput('');
+ }
 
  async function selectProfile(id:string){
   const p=profiles.find(p=>p.id===id); if(!p)return;
@@ -101,7 +113,7 @@ export default function Home(){
   <input value={newProfileName} onChange={e=>setNewProfileName(e.target.value)} onKeyDown={e=>e.key==='Enter'&&createProfile()} placeholder="Nome do novo perfil"/>
   <button className="button" onClick={createProfile}>Guardar como novo perfil</button>
  </div>
- <div className="toolbar"><input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&add()} placeholder="Ticker, por exemplo ASML.AS"/><button className="button" onClick={add}>Adicionar</button></div>
- <div className="ranges">{ranges.map(r=><button key={r} className={`button secondary ${range===r?'active':''}`} onClick={()=>setRange(r)}>{r.toUpperCase()}</button>)}</div>{error&&<div className="error">{error}</div>}
- <section className="grid">{visible.map(s=>{const first=s.points[0]?.close,last=s.points.at(-1)?.close;const change=first&&last?(last-first)/first*100:0;const up=change>=0;return <article className="card" key={s.symbol}><div className="row"><div><strong>{s.symbol}</strong><div className="muted">{s.name} · {s.currency}</div></div><button className="button secondary" onClick={()=>setSymbols(symbols.filter(x=>x!==s.symbol))}>×</button></div><div className="row"><div className="price">{last?.toLocaleString('pt-PT',{maximumFractionDigits:2})??'Sem dados'}</div><b className={up?'up':'down'}>{change.toFixed(2)}%</b></div><div style={{height:190,marginTop:16}}><ResponsiveContainer><AreaChart data={s.points}><XAxis dataKey="date" hide/><YAxis domain={['auto','auto']} hide/><Tooltip/><Area type="monotone" dataKey="close" stroke={up?'#34d399':'#fb7185'} fill={up?'#064e3b':'#4c0519'} strokeWidth={2}/></AreaChart></ResponsiveContainer></div></article>})}</section></main>
+ <div className="toolbar stocks-toolbar"><input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&add()} placeholder="Ticker, por exemplo ASML.AS"/><span className="muted symbol-count">{symbols.length}/{MAX_SYMBOLS}</span><button className="button" onClick={add} disabled={symbols.length>=MAX_SYMBOLS}>Adicionar</button></div>
+ <div className="ranges">{ranges.map(r=><button key={r.value} className={`button secondary ${range===r.value?'active':''}`} onClick={()=>setRange(r.value)}>{r.label}</button>)}</div>{error&&<div className="error">{error}</div>}
+ <section className="grid">{visible.map(s=>{const first=s.points[0]?.close,last=s.points.at(-1)?.close;const change=first&&last?(last-first)/first*100:0;const up=change>=0;return <article className="card" key={s.symbol}><div className="row"><div className="stock-title"><strong>{s.symbol}</strong><div className="muted">{s.name} · {s.currency}</div></div><button className="button secondary remove-button" aria-label={`Remover ${s.symbol}`} onClick={()=>setSymbols(symbols.filter(x=>x!==s.symbol))}>×</button></div><div className="row"><div className="price">{last?.toLocaleString('pt-PT',{maximumFractionDigits:2})??'Sem dados'}</div><b className={up?'up':'down'}>{change.toFixed(2)}%</b></div><div className="chart"><ResponsiveContainer width="100%" height="100%" debounce={100}><AreaChart data={s.points}><XAxis dataKey="date" hide/><YAxis domain={['auto','auto']} hide/><Tooltip labelFormatter={value=>new Date(String(value)).toLocaleString('pt-PT')} formatter={value=>[Number(String(value)).toLocaleString('pt-PT',{maximumFractionDigits:2}),'Cotação']}/><Area type="monotone" dataKey="close" stroke={up?'#34d399':'#fb7185'} fill={up?'#064e3b':'#4c0519'} strokeWidth={2}/></AreaChart></ResponsiveContainer></div></article>})}</section></main>
 }

@@ -18,7 +18,8 @@ export interface ProfilesData {
 const DATA_DIR = path.join(process.cwd(), "data");
 const DATA_FILE = path.join(DATA_DIR, "profiles.json");
 const BLOB_PATH = "profiles/profiles.json";
-const ALLOWED_RANGES = new Set(["1d", "1mo", "6mo", "1y"]);
+const ALLOWED_RANGES = new Set(["1d", "5d", "1mo", "6mo", "1y"]);
+const MAX_SYMBOLS = 24;
 
 const DEFAULT_DATA: ProfilesData = {
   profiles: [
@@ -66,7 +67,7 @@ function normalizeSymbols(symbols: string[]): string[] {
     .map((symbol) => symbol.trim().toUpperCase())
     .filter(Boolean)
     .filter((symbol, index, items) => items.indexOf(symbol) === index)
-    .slice(0, 12);
+    .slice(0, MAX_SYMBOLS);
 }
 
 function normalizeRange(range: string): string {
