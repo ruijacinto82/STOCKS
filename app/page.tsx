@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 type Point={date:string;close:number}; type Stock={symbol:string;name:string;currency:string;points:Point[];error?:boolean};
 type Profile={id:string;name:string;symbols:string[];range:string};
-const MAX_SYMBOLS=24;
+const MAX_SYMBOLS=30;
 const ranges=[
  {value:'1d',label:'Hoje · 5 min'},
  {value:'5d',label:'5 dias · 15 min'},

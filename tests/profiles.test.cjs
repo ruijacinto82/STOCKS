@@ -107,6 +107,24 @@ test("creating, editing and reloading preserve earlier profiles despite a stale 
   assert.ok(store.uploads.every(options => options.ifMatch && options.addRandomSuffix === false));
 });
 
+test("PSI preserves all 30 requested symbols when created, edited and reloaded", async () => {
+  const symbols = [
+    "ALTR.LS", "BCP.LS", "SLBEN.LS", "COR.LS", "CTT.LS", "EDP.LS",
+    "EDPR.LS", "ESON.LS", "FLEXD.LS", "GALP.LS", "GLINT.LS", "IBS.LS",
+    "IPR.LS", "JMT.LS", "MAR.LS", "MCP.LS", "EGL.LS", "NVG.LS",
+    "NOS.LS", "NBA.LS", "PHR.LS", "FCP.LS", "RAM.LS", "RENE.LS",
+    "SEM.LS", "SON.LS", "SNC.LS", "SCP.LS", "TDSA.LS", "TYC.LS",
+  ];
+  const store = harness();
+  const created = await store.api.createProfile("PSI", symbols, "1mo");
+  await store.api.updateProfile(created.activeProfileId, { symbols, range: "1y" });
+  const data = await store.api.readProfiles();
+  assert.equal(data.profiles.length, 2);
+  assert.deepEqual(Array.from(data.profiles.find(p => p.name === "PSI").symbols), symbols);
+  const limited = await store.api.createProfile("Limit", [...symbols, "AAPL"], "1mo");
+  assert.equal(limited.profiles.find(p => p.name === "Limit").symbols.length, 30);
+});
+
 test("concurrent autosave, create and activation retain all changes after conflict retries", async () => {
   const store = harness();
   await Promise.all([

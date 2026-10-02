@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import YahooFinance from "yahoo-finance2";
 const yahooFinance = new YahooFinance();
-const MAX_SYMBOLS = 24;
+const MAX_SYMBOLS = 30;
 const allowedRanges = new Set(["1d", "5d", "1mo", "6mo", "1y"]);
 const periods: Record<
   string,
