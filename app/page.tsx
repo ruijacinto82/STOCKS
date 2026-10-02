@@ -25,7 +25,7 @@ export default function Home(){
 
  async function loadProfiles(){
   try{
-   const data=await readJson<{profiles:Profile[];activeProfileId:string}>(await fetch('/api/profiles'));
+   const data=await readJson<{profiles:Profile[];activeProfileId:string}>(await fetch('/api/profiles',{cache:'no-store'}));
    setProfiles(data.profiles);
    setActiveProfileId(data.activeProfileId);
    const active=data.profiles.find((p:Profile)=>p.id===data.activeProfileId)??data.profiles[0];
@@ -48,7 +48,7 @@ export default function Home(){
   saveTimer.current=setTimeout(()=>{
    fetch(`/api/profiles/${activeProfileId}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbols,range})})
     .then(readJson<{profiles:Profile[];activeProfileId:string}>)
-    .then(data=>setProfiles(data.profiles))
+    .then(data=>setProfiles(current=>current.map(profile=>profile.id===activeProfileId?(data.profiles.find(saved=>saved.id===profile.id)??profile):profile)))
     .catch((err:unknown)=>setError(err instanceof Error?err.message:'Não foi possível guardar o perfil ativo.'));
   },500);
   return ()=>{if(saveTimer.current)clearTimeout(saveTimer.current)};

@@ -19,6 +19,10 @@ Nota: yahoo-finance2 usa uma API não oficial. Serve para uso pessoal e educativ
 
 Cada perfil suporta até 24 ações, apresentadas numa grelha que se adapta à largura do ecrã e ao zoom do browser. Os períodos disponíveis incluem a última sessão intraday em intervalos de 5 minutos, as últimas cinco sessões em intervalos de 15 minutos, um mês, seis meses e um ano.
 
+## Testes
+
+Executa `npm test` para verificar a persistência dos perfis, incluindo leituras sem cache, gravações simultâneas e erros de armazenamento. Os testes usam armazenamento simulado e não alteram os perfis locais nem o Blob.
+
 ## Deploy no Vercel
 
 Para o deploy no Vercel com persistência dos perfis, a aplicação usa **Vercel Blob** em produção.
@@ -65,3 +69,5 @@ vercel --prod
 
 - Em **local**, sem variáveis do Blob, a app usa `data/profiles.json`
 - Em **Vercel**, se o Blob não estiver configurado, a API devolve erro explícito para evitar falsas persistências
+- Os perfis são lidos diretamente do Blob, sem cache, e as alterações usam a versão (ETag) do ficheiro para impedir que pedidos simultâneos sobrescrevam alterações recentes.
+- A primeira gravação cria o ficheiro sem sobrescrever um ficheiro já existente. Dados inválidos ou erros de armazenamento são apresentados como erros, sem repor silenciosamente os perfis iniciais.

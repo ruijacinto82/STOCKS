@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { promises as fs } from "fs";
 import path from "path";
-import { get, put } from "@vercel/blob";
+import { BlobPreconditionFailedError, get, put } from "@vercel/blob";
 
 export interface Profile {
   id: string;
@@ -20,6 +20,8 @@ const DATA_FILE = path.join(DATA_DIR, "profiles.json");
 const BLOB_PATH = "profiles/profiles.json";
 const ALLOWED_RANGES = new Set(["1d", "5d", "1mo", "6mo", "1y"]);
 const MAX_SYMBOLS = 24;
+const MAX_WRITE_ATTEMPTS = 5;
+let fileMutationQueue: Promise<void> = Promise.resolve();
 
 const DEFAULT_DATA: ProfilesData = {
   profiles: [
@@ -84,8 +86,21 @@ function normalizeProfile(profile: Profile): Profile {
 }
 
 function normalizeProfilesData(data: ProfilesData): ProfilesData {
-  if (!Array.isArray(data.profiles) || data.profiles.length === 0) {
-    return cloneDefaultData();
+  if (
+    !data ||
+    !Array.isArray(data.profiles) ||
+    data.profiles.length === 0 ||
+    data.profiles.some(
+      (profile) =>
+        !profile ||
+        typeof profile.id !== "string" ||
+        typeof profile.name !== "string" ||
+        !Array.isArray(profile.symbols) ||
+        profile.symbols.some((symbol) => typeof symbol !== "string") ||
+        typeof profile.range !== "string",
+    )
+  ) {
+    throw new Error("Os dados dos perfis são inválidos. O ficheiro guardado não foi alterado.");
   }
 
   const profiles = data.profiles.map(normalizeProfile);
@@ -100,8 +115,11 @@ function parseProfiles(raw: string): ProfilesData {
   try {
     const parsed = JSON.parse(raw) as ProfilesData;
     return normalizeProfilesData(parsed);
-  } catch {
-    return cloneDefaultData();
+  } catch (err) {
+    if (err instanceof SyntaxError) {
+      throw new Error("Não foi possível ler os perfis guardados: JSON inválido.");
+    }
+    throw err;
   }
 }
 
@@ -109,7 +127,8 @@ async function ensureDataFile(): Promise<void> {
   await fs.mkdir(DATA_DIR, { recursive: true });
   try {
     await fs.access(DATA_FILE);
-  } catch {
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
     await fs.writeFile(DATA_FILE, JSON.stringify(DEFAULT_DATA, null, 2), "utf-8");
   }
 }
@@ -124,7 +143,8 @@ async function readLocalSeedData(): Promise<ProfilesData | null> {
   try {
     const raw = await fs.readFile(DATA_FILE, "utf-8");
     return parseProfiles(raw);
-  } catch {
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
     return null;
   }
 }
@@ -134,38 +154,60 @@ async function writeProfilesToFile(data: ProfilesData): Promise<void> {
   await fs.writeFile(DATA_FILE, JSON.stringify(data, null, 2), "utf-8");
 }
 
-async function readProfilesFromBlob(): Promise<ProfilesData> {
-  const result = await get(BLOB_PATH, { access: "private" });
+async function readProfilesFromBlob(): Promise<{ data: ProfilesData; etag?: string }> {
+  const result = await get(BLOB_PATH, { access: "private", useCache: false });
 
-  if (result?.statusCode !== 200) {
+  if (!result) {
     const seed = (await readLocalSeedData()) ?? cloneDefaultData();
-    await writeProfilesToBlob(seed);
-    return seed;
+    return { data: seed };
+  }
+  if (result.statusCode !== 200) {
+    throw new Error("Não foi possível obter a versão atual dos perfis guardados.");
   }
 
   const raw = await new Response(result.stream).text();
-  return parseProfiles(raw);
+  return { data: parseProfiles(raw), etag: result.blob.etag };
 }
 
-async function writeProfilesToBlob(data: ProfilesData): Promise<void> {
+async function writeProfilesToBlob(data: ProfilesData, etag?: string): Promise<void> {
   await put(BLOB_PATH, JSON.stringify(data, null, 2), {
     access: "private",
-    allowOverwrite: true,
+    addRandomSuffix: false,
+    allowOverwrite: Boolean(etag),
+    ifMatch: etag,
     contentType: "application/json; charset=utf-8",
   });
 }
 
 export async function readProfiles(): Promise<ProfilesData> {
-  return getStorageBackend() === "blob" ? readProfilesFromBlob() : readProfilesFromFile();
+  return getStorageBackend() === "blob" ? (await readProfilesFromBlob()).data : readProfilesFromFile();
 }
 
-async function writeProfiles(data: ProfilesData): Promise<void> {
-  const normalized = normalizeProfilesData(data);
+async function mutateProfiles(
+  mutate: (data: ProfilesData) => ProfilesData,
+): Promise<ProfilesData> {
   if (getStorageBackend() === "blob") {
-    await writeProfilesToBlob(normalized);
-    return;
+    for (let attempt = 0; attempt < MAX_WRITE_ATTEMPTS; attempt++) {
+      const { data, etag } = await readProfilesFromBlob();
+      const updated = normalizeProfilesData(mutate(data));
+      try {
+        await writeProfilesToBlob(updated, etag);
+        return updated;
+      } catch (err) {
+        if (!(err instanceof BlobPreconditionFailedError)) throw err;
+      }
+    }
+    throw new Error("Os perfis foram alterados por outro pedido. Tenta guardar novamente.");
   }
-  await writeProfilesToFile(normalized);
+
+  const operation = fileMutationQueue.then(async () => {
+    const updated = normalizeProfilesData(mutate(await readProfilesFromFile()));
+    await writeProfilesToFile(updated);
+    return updated;
+  });
+  // A failed operation must not block subsequent saves; its caller still receives the error.
+  fileMutationQueue = operation.then(() => undefined, () => undefined);
+  return operation;
 }
 
 export async function createProfile(
@@ -173,60 +215,58 @@ export async function createProfile(
   symbols: string[],
   range: string,
 ): Promise<ProfilesData> {
-  const data = await readProfiles();
   const profile: Profile = normalizeProfile({
     id: randomUUID(),
     name,
     symbols,
     range,
   });
-  data.profiles.push(profile);
-  data.activeProfileId = profile.id;
-  await writeProfiles(data);
-  return data;
+  return mutateProfiles((data) => {
+    data.profiles.push(profile);
+    data.activeProfileId = profile.id;
+    return data;
+  });
 }
 
 export async function updateProfile(
   id: string,
   updates: Partial<Pick<Profile, "name" | "symbols" | "range">>,
 ): Promise<ProfilesData> {
-  const data = await readProfiles();
-  const profile = data.profiles.find((p) => p.id === id);
-  if (!profile) throw new Error("Perfil não encontrado");
-  if (typeof updates.name === "string") {
-    profile.name = updates.name.trim() || profile.name;
-  }
-  if (Array.isArray(updates.symbols)) {
-    profile.symbols = normalizeSymbols(updates.symbols);
-  }
-  if (typeof updates.range === "string") {
-    profile.range = normalizeRange(updates.range);
-  }
-  await writeProfiles(data);
-  return data;
+  return mutateProfiles((data) => {
+    const profile = data.profiles.find((p) => p.id === id);
+    if (!profile) throw new Error("Perfil não encontrado");
+    if (typeof updates.name === "string") {
+      profile.name = updates.name.trim() || profile.name;
+    }
+    if (Array.isArray(updates.symbols)) {
+      profile.symbols = normalizeSymbols(updates.symbols);
+    }
+    if (typeof updates.range === "string") {
+      profile.range = normalizeRange(updates.range);
+    }
+    return data;
+  });
 }
 
 export async function deleteProfile(id: string): Promise<ProfilesData> {
-  const data = await readProfiles();
-  data.profiles = data.profiles.filter((p) => p.id !== id);
-  if (data.profiles.length === 0) {
-    const fresh = cloneDefaultData();
-    await writeProfiles(fresh);
-    return fresh;
-  }
-  if (data.activeProfileId === id) {
-    data.activeProfileId = data.profiles[0].id;
-  }
-  await writeProfiles(data);
-  return data;
+  return mutateProfiles((data) => {
+    data.profiles = data.profiles.filter((p) => p.id !== id);
+    if (data.profiles.length === 0) {
+      return cloneDefaultData();
+    }
+    if (data.activeProfileId === id) {
+      data.activeProfileId = data.profiles[0].id;
+    }
+    return data;
+  });
 }
 
 export async function setActiveProfile(id: string): Promise<ProfilesData> {
-  const data = await readProfiles();
-  if (!data.profiles.some((p) => p.id === id)) {
-    throw new Error("Perfil não encontrado");
-  }
-  data.activeProfileId = id;
-  await writeProfiles(data);
-  return data;
+  return mutateProfiles((data) => {
+    if (!data.profiles.some((p) => p.id === id)) {
+      throw new Error("Perfil não encontrado");
+    }
+    data.activeProfileId = id;
+    return data;
+  });
 }

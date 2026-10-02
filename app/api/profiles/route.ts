@@ -4,7 +4,7 @@ import { createProfile, readProfiles } from "@/lib/profiles";
 export async function GET() {
   try {
     const data = await readProfiles();
-    return NextResponse.json(data);
+    return NextResponse.json(data, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Erro ao carregar perfis";
     return NextResponse.json({ error: message }, { status: 500 });
