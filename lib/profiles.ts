@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { promises as fs } from "fs";
 import path from "path";
-import { BlobPreconditionFailedError, get, put } from "@vercel/blob";
+import { BlobNotFoundError, BlobPreconditionFailedError, get, head, put } from "@vercel/blob";
 
 export interface Profile {
   id: string;
@@ -154,10 +154,27 @@ async function writeProfilesToFile(data: ProfilesData): Promise<void> {
   await fs.writeFile(DATA_FILE, JSON.stringify(data, null, 2), "utf-8");
 }
 
-async function readProfilesFromBlob(): Promise<{ data: ProfilesData; etag?: string }> {
+async function readBlobVersion(): Promise<string | undefined> {
+  try {
+    const metadata = await head(BLOB_PATH);
+    if (!metadata.etag) {
+      throw new Error("O armazenamento não devolveu a versão dos perfis. A gravação foi cancelada.");
+    }
+    return metadata.etag;
+  } catch (err) {
+    if (err instanceof BlobNotFoundError) return undefined;
+    throw err;
+  }
+}
+
+async function readProfilesFromBlob(
+  forUpdate = false,
+): Promise<{ data: ProfilesData; etag?: string }> {
+  const versionBefore = forUpdate ? await readBlobVersion() : undefined;
   const result = await get(BLOB_PATH, { access: "private", useCache: false });
 
   if (!result) {
+    if (versionBefore !== undefined) throw new BlobPreconditionFailedError();
     const seed = (await readLocalSeedData()) ?? cloneDefaultData();
     return { data: seed };
   }
@@ -166,7 +183,14 @@ async function readProfilesFromBlob(): Promise<{ data: ProfilesData; etag?: stri
   }
 
   const raw = await new Response(result.stream).text();
-  return { data: parseProfiles(raw), etag: result.blob.etag };
+  if (forUpdate) {
+    // Download/CDN ETags can differ from the storage API's write precondition.
+    const versionAfter = await readBlobVersion();
+    if (!versionBefore || versionBefore !== versionAfter) {
+      throw new BlobPreconditionFailedError();
+    }
+  }
+  return { data: parseProfiles(raw), etag: versionBefore };
 }
 
 async function writeProfilesToBlob(data: ProfilesData, etag?: string): Promise<void> {
@@ -188,9 +212,9 @@ async function mutateProfiles(
 ): Promise<ProfilesData> {
   if (getStorageBackend() === "blob") {
     for (let attempt = 0; attempt < MAX_WRITE_ATTEMPTS; attempt++) {
-      const { data, etag } = await readProfilesFromBlob();
-      const updated = normalizeProfilesData(mutate(data));
       try {
+        const { data, etag } = await readProfilesFromBlob(true);
+        const updated = normalizeProfilesData(mutate(data));
         await writeProfilesToBlob(updated, etag);
         return updated;
       } catch (err) {

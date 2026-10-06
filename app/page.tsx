@@ -21,6 +21,7 @@ export default function Home(){
  const [symbols,setSymbols]=useState<string[]>([]); const [range,setRange]=useState('1mo');
  const [stocks,setStocks]=useState<Stock[]>([]); const [input,setInput]=useState(''); const [newProfileName,setNewProfileName]=useState('');
  const [loading,setLoading]=useState(true); const [error,setError]=useState(''); const [profilesReady,setProfilesReady]=useState(false);
+ const [profileError,setProfileError]=useState('');
  const saveTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
 
  async function loadProfiles(){
@@ -32,7 +33,7 @@ export default function Home(){
    if(active){setSymbols(active.symbols);setRange(active.range)}
    setProfilesReady(true);
   }catch(err){
-   setError(err instanceof Error?err.message:'Não foi possível carregar os perfis.');
+   setProfileError(err instanceof Error?err.message:'Não foi possível carregar os perfis.');
   }
  }
 
@@ -48,8 +49,8 @@ export default function Home(){
   saveTimer.current=setTimeout(()=>{
    fetch(`/api/profiles/${activeProfileId}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbols,range})})
     .then(readJson<{profiles:Profile[];activeProfileId:string}>)
-    .then(data=>setProfiles(current=>current.map(profile=>profile.id===activeProfileId?(data.profiles.find(saved=>saved.id===profile.id)??profile):profile)))
-    .catch((err:unknown)=>setError(err instanceof Error?err.message:'Não foi possível guardar o perfil ativo.'));
+    .then(data=>{setProfiles(current=>current.map(profile=>profile.id===activeProfileId?(data.profiles.find(saved=>saved.id===profile.id)??profile):profile));setProfileError('')})
+    .catch((err:unknown)=>setProfileError(err instanceof Error?err.message:'Não foi possível guardar o perfil ativo.'));
   },500);
   return ()=>{if(saveTimer.current)clearTimeout(saveTimer.current)};
  },[symbols.join(','),range]);
@@ -67,8 +68,9 @@ export default function Home(){
   setActiveProfileId(id); setSymbols(p.symbols); setRange(p.range);
   try{
    await readJson(await fetch(`/api/profiles/${id}/activate`,{method:'POST'}));
+   setProfileError('');
   }catch(err){
-   setError(err instanceof Error?err.message:'Não foi possível ativar o perfil.');
+   setProfileError(err instanceof Error?err.message:'Não foi possível ativar o perfil.');
   }
  }
  async function createProfile(){
@@ -76,8 +78,9 @@ export default function Home(){
    const name=newProfileName.trim(); if(!name)return;
    const data=await readJson<{profiles:Profile[];activeProfileId:string}>(await fetch('/api/profiles',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,symbols,range})}));
    setProfiles(data.profiles); setActiveProfileId(data.activeProfileId); setNewProfileName('');
+   setProfileError('');
   }catch(err){
-   setError(err instanceof Error?err.message:'Não foi possível criar o perfil.');
+   setProfileError(err instanceof Error?err.message:'Não foi possível criar o perfil.');
   }
  }
  async function renameProfile(){
@@ -86,8 +89,9 @@ export default function Home(){
    if(!name)return;
    const data=await readJson<{profiles:Profile[];activeProfileId:string}>(await fetch(`/api/profiles/${activeProfileId}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})}));
    setProfiles(data.profiles);
+   setProfileError('');
   }catch(err){
-   setError(err instanceof Error?err.message:'Não foi possível renomear o perfil.');
+   setProfileError(err instanceof Error?err.message:'Não foi possível renomear o perfil.');
   }
  }
  async function removeProfile(){
@@ -98,8 +102,9 @@ export default function Home(){
    setProfiles(data.profiles); setActiveProfileId(data.activeProfileId);
    const active=data.profiles.find((p:Profile)=>p.id===data.activeProfileId);
    if(active){setSymbols(active.symbols);setRange(active.range)}
+   setProfileError('');
   }catch(err){
-   setError(err instanceof Error?err.message:'Não foi possível apagar o perfil.');
+   setProfileError(err instanceof Error?err.message:'Não foi possível apagar o perfil.');
   }
  }
 
@@ -114,6 +119,6 @@ export default function Home(){
   <button className="button" onClick={createProfile}>Guardar como novo perfil</button>
  </div>
  <div className="toolbar stocks-toolbar"><input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&add()} placeholder="Ticker, por exemplo ASML.AS"/><span className="muted symbol-count">{symbols.length}/{MAX_SYMBOLS}</span><button className="button" onClick={add} disabled={symbols.length>=MAX_SYMBOLS}>Adicionar</button></div>
- <div className="ranges">{ranges.map(r=><button key={r.value} className={`button secondary ${range===r.value?'active':''}`} onClick={()=>setRange(r.value)}>{r.label}</button>)}</div>{error&&<div className="error">{error}</div>}
+ <div className="ranges">{ranges.map(r=><button key={r.value} className={`button secondary ${range===r.value?'active':''}`} onClick={()=>setRange(r.value)}>{r.label}</button>)}</div>{profileError&&<div className="error" role="alert">{profileError}</div>}{error&&<div className="error">{error}</div>}
  <section className="grid">{visible.map(s=>{const first=s.points[0]?.close,last=s.points.at(-1)?.close;const change=first&&last?(last-first)/first*100:0;const up=change>=0;return <article className="card" key={s.symbol}><div className="row"><div className="stock-title"><strong>{s.symbol}</strong><div className="muted">{s.name} · {s.currency}</div></div><button className="button secondary remove-button" aria-label={`Remover ${s.symbol}`} onClick={()=>setSymbols(symbols.filter(x=>x!==s.symbol))}>×</button></div><div className="row"><div className="price">{last?.toLocaleString('pt-PT',{maximumFractionDigits:2})??'Sem dados'}</div><b className={up?'up':'down'}>{change.toFixed(2)}%</b></div><div className="chart"><ResponsiveContainer width="100%" height="100%" debounce={100}><AreaChart data={s.points}><XAxis dataKey="date" hide/><YAxis domain={['auto','auto']} hide/><Tooltip labelFormatter={value=>new Date(String(value)).toLocaleString('pt-PT')} formatter={value=>[Number(String(value)).toLocaleString('pt-PT',{maximumFractionDigits:2}),'Cotação']}/><Area type="monotone" dataKey="close" stroke={up?'#34d399':'#fb7185'} fill={up?'#064e3b':'#4c0519'} strokeWidth={2}/></AreaChart></ResponsiveContainer></div></article>})}</section></main>
 }

@@ -69,5 +69,6 @@ vercel --prod
 
 - Em **local**, sem variáveis do Blob, a app usa `data/profiles.json`
 - Em **Vercel**, se o Blob não estiver configurado, a API devolve erro explícito para evitar falsas persistências
-- Os perfis são lidos diretamente do Blob, sem cache, e as alterações usam a versão (ETag) do ficheiro para impedir que pedidos simultâneos sobrescrevam alterações recentes.
+- Os perfis são lidos diretamente do Blob, sem cache. As alterações usam a versão (ETag) da API de metadados (`head`), não a do download/CDN, e confirmam que essa versão não mudou durante a leitura antes de guardar. Isto impede que pedidos simultâneos sobrescrevam alterações recentes sem bloquear gravações por diferenças entre os dois tipos de ETag.
+- Os erros de gravação dos perfis são apresentados separadamente dos erros das cotações, para que uma atualização de mercado não esconda uma falha ao guardar.
 - A primeira gravação cria o ficheiro sem sobrescrever um ficheiro já existente. Dados inválidos ou erros de armazenamento são apresentados como erros, sem repor silenciosamente os perfis iniciais.

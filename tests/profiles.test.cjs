@@ -4,7 +4,7 @@ const path = require("node:path");
 const { test } = require("node:test");
 const vm = require("node:vm");
 const { transformSync } = require("next/dist/build/swc");
-const { BlobPreconditionFailedError } = require("@vercel/blob");
+const { BlobNotFoundError, BlobPreconditionFailedError } = require("@vercel/blob");
 
 const source = readFileSync(path.join(__dirname, "..", "lib", "profiles.ts"), "utf8");
 const compiled = transformSync(source, {
@@ -20,7 +20,7 @@ function initialData() {
   };
 }
 
-function harness({ initial = initialData(), backend = "blob", failWrites = false, raceFirstWrite = false } = {}) {
+function harness({ initial = initialData(), backend = "blob", failWrites = false, raceFirstWrite = false, changeDuringRead = false, missingVersion = false } = {}) {
   let raw = initial === null ? null : typeof initial === "string" ? initial : JSON.stringify(initial);
   let version = 1;
   const stale = raw;
@@ -28,17 +28,32 @@ function harness({ initial = initialData(), backend = "blob", failWrites = false
   let writes = 0;
   let getError;
   let statusCode = 200;
+  let headError;
+  let changedDuringRead = false;
   const reads = [];
   const uploads = [];
   const missing = () => Object.assign(new Error("Missing file"), { code: "ENOENT" });
   const blob = {
     BlobPreconditionFailedError,
+    BlobNotFoundError,
+    async head() {
+      if (headError) throw headError;
+      if (raw === null) throw new BlobNotFoundError();
+      return { etag: missingVersion ? "" : String(version) };
+    },
     async get(_pathname, options) {
       reads.push(options);
       if (getError) throw getError;
       if (raw === null) return null;
       const snapshot = options.useCache === false ? raw : stale;
-      const etag = String(version);
+      const etag = `W/"download-${version}"`;
+      if (changeDuringRead && !changedDuringRead) {
+        changedDuringRead = true;
+        const data = JSON.parse(raw);
+        data.profiles.push({ id: "external", name: "External", symbols: ["NVDA"], range: "1mo" });
+        raw = JSON.stringify(data);
+        version++;
+      }
       return {
         statusCode,
         stream: new ReadableStream({
@@ -91,6 +106,7 @@ function harness({ initial = initialData(), backend = "blob", failWrites = false
     writes: () => writes,
     failRead(error) { getError = error; },
     setStatus(status) { statusCode = status; },
+    failHead(error) { headError = error; },
   };
 }
 
@@ -105,6 +121,33 @@ test("creating, editing and reloading preserve earlier profiles despite a stale 
   assert.deepEqual(Array.from(reloaded.profiles.find(p => p.id === id).symbols), ["NVDA"]);
   assert.ok(store.reads.every(options => options.useCache === false));
   assert.ok(store.uploads.every(options => options.ifMatch && options.addRandomSuffix === false));
+});
+
+test("write preconditions use storage metadata instead of differing download ETags", async () => {
+  const store = harness();
+  await store.api.updateProfile("original", { name: "Edited" });
+  await store.api.createProfile("New", [], "1mo");
+  assert.equal(store.uploads[0].ifMatch, "1");
+  assert.equal(store.uploads[1].ifMatch, "2");
+  assert.equal(store.conflicts(), 0);
+});
+
+test("a version change during download retries before writing and preserves external changes", async () => {
+  const store = harness({ changeDuringRead: true });
+  await store.api.createProfile("New", [], "1mo");
+  assert.deepEqual(store.data().profiles.map(p => p.name), ["Original", "External", "New"]);
+  assert.equal(store.uploads.length, 1);
+  assert.equal(store.uploads[0].ifMatch, "2");
+});
+
+test("missing metadata versions and metadata service failures cannot trigger unprotected overwrites", async () => {
+  const missing = harness({ missingVersion: true });
+  await assert.rejects(missing.api.createProfile("New", [], "1mo"), /versão dos perfis/);
+  assert.equal(missing.uploads.length, 0);
+  const failed = harness();
+  failed.failHead(new Error("Metadata unavailable"));
+  await assert.rejects(failed.api.updateProfile("original", { name: "Edited" }), /Metadata unavailable/);
+  assert.equal(failed.uploads.length, 0);
 });
 
 test("PSI preserves all 30 requested symbols when created, edited and reloaded", async () => {
