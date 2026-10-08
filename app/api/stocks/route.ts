@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import YahooFinance from "yahoo-finance2";
 const yahooFinance = new YahooFinance();
 const MAX_SYMBOLS = 30;
-const allowedRanges = new Set(["1d", "5d", "1mo", "6mo", "1y"]);
+const allowedRanges = new Set(["1d", "5d", "1mo", "6mo", "1y", "2y", "5y", "10y"]);
 const periods: Record<
   string,
   { days: number; interval: "5m" | "15m" | "1d"; sessionCount?: number }
@@ -12,6 +12,9 @@ const periods: Record<
   "1mo": { days: 31, interval: "1d" },
   "6mo": { days: 183, interval: "1d" },
   "1y": { days: 366, interval: "1d" },
+  "2y": { days: 731, interval: "1d" },
+  "5y": { days: 1827, interval: "1d" },
+  "10y": { days: 3653, interval: "1d" },
 };
 
 async function mapWithConcurrency<T, R>(

@@ -132,6 +132,17 @@ test("write preconditions use storage metadata instead of differing download ETa
   assert.equal(store.conflicts(), 0);
 });
 
+test("all supported ranges persist through create, update and reload", async () => {
+  for (const range of ["1d", "5d", "1mo", "6mo", "1y", "2y", "5y", "10y"]) {
+    const store = harness();
+    const created = await store.api.createProfile("History", ["EDP.LS"], range);
+    assert.equal(created.profiles.find(p => p.id === created.activeProfileId).range, range);
+    await store.api.updateProfile("original", { range });
+    const reloaded = await store.api.readProfiles();
+    assert.ok(reloaded.profiles.every(p => p.range === range));
+  }
+});
+
 test("a version change during download retries before writing and preserves external changes", async () => {
   const store = harness({ changeDuringRead: true });
   await store.api.createProfile("New", [], "1mo");

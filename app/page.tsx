@@ -10,6 +10,9 @@ const ranges=[
  {value:'1mo',label:'1 mês'},
  {value:'6mo',label:'6 meses'},
  {value:'1y',label:'1 ano'},
+ {value:'2y',label:'2 anos'},
+ {value:'5y',label:'5 anos'},
+ {value:'10y',label:'10 anos'},
 ];
 async function readJson<T>(response:Response):Promise<T>{
  const data=await response.json();

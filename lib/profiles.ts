@@ -18,7 +18,7 @@ export interface ProfilesData {
 const DATA_DIR = path.join(process.cwd(), "data");
 const DATA_FILE = path.join(DATA_DIR, "profiles.json");
 const BLOB_PATH = "profiles/profiles.json";
-const ALLOWED_RANGES = new Set(["1d", "5d", "1mo", "6mo", "1y"]);
+const ALLOWED_RANGES = new Set(["1d", "5d", "1mo", "6mo", "1y", "2y", "5y", "10y"]);
 const MAX_SYMBOLS = 30;
 const MAX_WRITE_ATTEMPTS = 5;
 let fileMutationQueue: Promise<void> = Promise.resolve();

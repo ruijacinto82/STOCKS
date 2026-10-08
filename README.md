@@ -17,7 +17,7 @@ Tickers Yahoo de exemplo: AAPL, EDP.LS, SAN.MC, SAP.DE, ASML.AS, MC.PA, 7203.T.
 
 Nota: yahoo-finance2 usa uma API não oficial. Serve para uso pessoal e educativo, mas não deve ser tratado como feed garantido de mercado.
 
-Cada perfil suporta até 30 ações, apresentadas numa grelha que se adapta à largura do ecrã e ao zoom do browser. Os períodos disponíveis incluem a última sessão intraday em intervalos de 5 minutos, as últimas cinco sessões em intervalos de 15 minutos, um mês, seis meses e um ano.
+Cada perfil suporta até 30 ações, apresentadas numa grelha que se adapta à largura do ecrã e ao zoom do browser. Os períodos disponíveis incluem a última sessão intraday em intervalos de 5 minutos, as últimas cinco sessões em intervalos de 15 minutos, um mês, seis meses e um, dois, cinco ou dez anos. Os períodos de um mês a dez anos usam cotações diárias; a extensão do histórico depende dos dados disponíveis no Yahoo Finance para cada ticker.
 
 ## Testes
 
