@@ -89,6 +89,10 @@ export async function GET(request: NextRequest) {
           symbol,
           name: quote.longName || quote.shortName || symbol,
           currency: quote.currency,
+          fiftyTwoWeekLow: typeof quote.fiftyTwoWeekLow === "number" && Number.isFinite(quote.fiftyTwoWeekLow)
+            ? quote.fiftyTwoWeekLow : null,
+          fiftyTwoWeekHigh: typeof quote.fiftyTwoWeekHigh === "number" && Number.isFinite(quote.fiftyTwoWeekHigh)
+            ? quote.fiftyTwoWeekHigh : null,
           points: visibleQuotes.map((point) => ({
             date: point.date.toISOString(),
             close: point.close,
@@ -104,6 +108,8 @@ export async function GET(request: NextRequest) {
           symbol,
           name: symbol,
           currency: "",
+          fiftyTwoWeekLow: null,
+          fiftyTwoWeekHigh: null,
           points: [],
           error: true,
         };

@@ -19,6 +19,8 @@ Nota: yahoo-finance2 usa uma API não oficial. Serve para uso pessoal e educativ
 
 Cada perfil suporta até 30 ações, apresentadas numa grelha que se adapta à largura do ecrã e ao zoom do browser. Os períodos disponíveis incluem a última sessão intraday em intervalos de 5 minutos, as últimas cinco sessões em intervalos de 15 minutos, um mês, seis meses e um, dois, cinco ou dez anos. Os períodos de um mês a dez anos usam cotações diárias; a extensão do histórico depende dos dados disponíveis no Yahoo Finance para cada ticker.
 
+Cada cartão mostra também o mínimo e o máximo das últimas 52 semanas, fornecidos pelo Yahoo Finance na moeda do ticker e independentemente do período do gráfico. Quando o fornecedor não disponibiliza um dos valores, é apresentado «Sem dados»; não se usam os extremos do gráfico como substituto.
+
 ## Testes
 
 Executa `npm test` para verificar a persistência dos perfis, incluindo leituras sem cache, gravações simultâneas e erros de armazenamento. Os testes usam armazenamento simulado e não alteram os perfis locais nem o Blob.
